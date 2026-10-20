@@ -1,0 +1,6 @@
+{
+  "name": "IconCraft AI - Android Theme Icon Batch Generator",
+  "description": "Aplikasi pembuat tema ikon Android secara massal berdasarkan acuan ikon referensi dengan AI Vision Style DNA, Android launcher preview, dan ekspor paket icon pack.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
