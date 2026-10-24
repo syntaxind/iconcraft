@@ -41,32 +41,57 @@ function friendlyMessage(status: number | undefined, raw: string): string {
   return raw;
 }
 
+export const REQUEST_TIMEOUT_MS = 90_000;
+
 export async function generate(
   apiKey: string,
   model: string,
   body: unknown,
   signal?: AbortSignal,
   delays: number[] = RETRY_DELAYS_MS,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<string> {
   for (let attempt = 0; ; attempt++) {
-    let res: Response;
+    // Each attempt gets its own timeout so a hung connection can never freeze the UI.
+    const ctl = new AbortController();
+    let timedOut = false;
+    const onAbort = () => ctl.abort();
+    signal?.addEventListener('abort', onAbort, { once: true });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ctl.abort();
+    }, timeoutMs);
+
+    let res: Response | undefined;
+    let data: any = {};
     try {
       res = await fetch(`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify(body),
-        signal,
+        signal: ctl.signal,
       });
+      data = await res.json().catch(() => ({}));
     } catch (err) {
-      if ((err as Error)?.name === 'AbortError') throw err;
+      if (signal?.aborted) throw err; // the user cancelled
+      res = undefined;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    }
+
+    if (!res) {
       if (attempt < delays.length) {
         await sleep(delays[attempt], signal);
         continue;
       }
-      throw new GeminiError('Tidak bisa menghubungi Gemini. Periksa koneksi internet. / Could not reach Gemini. Check your connection.');
+      throw new GeminiError(
+        timedOut
+          ? `Gemini tidak merespons dalam ${Math.round(timeoutMs / 1000)} detik. Coba lagi, atau ganti model. / Gemini did not respond within ${Math.round(timeoutMs / 1000)} s. Try again or switch the model.`
+          : 'Tidak bisa menghubungi Gemini. Periksa koneksi internet. / Could not reach Gemini. Check your connection.',
+      );
     }
 
-    const data = await res.json().catch(() => ({}));
     if (res.ok) {
       const text = (data?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('');
       if (!text) throw new GeminiError('Model tidak mengembalikan teks. / The model returned no text.');
@@ -112,6 +137,6 @@ export interface AiStatus {
 /** Sends one tiny request to prove the key + model work. Throws GeminiError with a readable message. */
 export async function testConnection(apiKey: string, model: string): Promise<{ ms: number }> {
   const started = performance.now();
-  await generate(apiKey, model, { contents: [{ parts: [{ text: 'Reply with the single word OK.' }] }] }, undefined, [1500]);
+  await generate(apiKey, model, { contents: [{ parts: [{ text: 'Reply with the single word OK.' }] }] }, undefined, [1500], 25_000);
   return { ms: Math.round(performance.now() - started) };
 }

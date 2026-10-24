@@ -33,18 +33,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   }[aiState];
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 ring-1 ring-white/20">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 shrink-0">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
+              <span className="font-extrabold text-base sm:text-lg whitespace-nowrap tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
                 IconCraft AI
               </span>
-              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-md">
+              <span className="hidden md:inline px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-md">
                 Android Theme
               </span>
             </div>
@@ -55,7 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <button
             onClick={onOpenApiKey}
             className="relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition-all cursor-pointer"
@@ -70,7 +70,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Help button */}
           <button
             onClick={onOpenHelp}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition-all"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition-all"
+            aria-label={lang === 'id' ? 'Cara Pasang di HP' : 'Install Guide'}
             title={lang === 'id' ? 'Panduan Pasang di Android' : 'Android Install Guide'}
           >
             <HelpCircle className="w-4 h-4 text-indigo-400" />
@@ -90,7 +91,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Download className="w-3.5 h-3.5" />
-            <span>{lang === 'id' ? 'Ekspor Paket' : 'Export Pack'}</span>
+            <span className="hidden sm:inline">{lang === 'id' ? 'Ekspor Paket' : 'Export Pack'}</span>
             {readyIconCount > 0 && (
               <span className="px-1.5 py-0.2 bg-white/20 text-white rounded text-[10px] font-bold">
                 {readyIconCount}
@@ -105,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="Toggle Language"
             aria-label="Toggle language"
           >
-            {lang === 'id' ? '🇮🇩 ID' : '🇬🇧 EN'}
+            {lang === 'id' ? '🇮🇩' : '🇬🇧'}<span className="hidden sm:inline">{lang === 'id' ? ' ID' : ' EN'}</span>
           </button>
         </div>
       </div>

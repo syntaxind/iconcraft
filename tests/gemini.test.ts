@@ -17,6 +17,10 @@ describe('gemini retry', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => err(503)));
     await expect(generate('k', 'm', {}, undefined, [0, 0])).rejects.toThrow(/sibuk/);
   });
+  it('times out a hung request instead of waiting forever', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_u: string, init: RequestInit) => new Promise((_res, rej) => init.signal!.addEventListener('abort', () => rej(new DOMException('Aborted', 'AbortError'))))));
+    await expect(generate('k', 'm', {}, undefined, [], 30)).rejects.toThrow(/tidak merespons/);
+  });
   it('does not retry a bad key', async () => {
     const fetchMock = vi.fn().mockResolvedValue(err(403, 'API key invalid'));
     vi.stubGlobal('fetch', fetchMock);
