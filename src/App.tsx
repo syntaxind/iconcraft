@@ -16,7 +16,8 @@ import { remapSvgColors } from './shared/remap';
 import { createSyntheticIconSvg } from './shared/syntheticIcon';
 import { sanitizeSvg } from './shared/svg';
 import { API_BASE } from './utils/api';
-import { analyzeStyleDirect, generateSvgDirect, DEFAULT_TEXT_MODEL } from './utils/geminiClient';
+import { analyzeStyleDirect, generateSvgDirect, DEFAULT_TEXT_MODEL, type AiStatus } from './utils/geminiClient';
+import { useWakeLock } from './utils/useWakeLock';
 import { loadApiKey, loadModel } from './utils/apiKeyStore';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { Sparkles, RefreshCw, Play, Check, Download, Square, FilePlus2, Save, FolderOpen, Smartphone } from 'lucide-react';
@@ -25,7 +26,7 @@ import { usePwaInstall } from './utils/usePwaInstall';
 import { downloadBlob } from './utils/download';
 
 const DEFAULT_APPS = ['WhatsApp', 'Camera', 'Gallery', 'Phone', 'Messages', 'Settings', 'Chrome', 'YouTube', 'Spotify', 'Instagram', 'Clock', 'Files'];
-const BATCH_CONCURRENCY = 2;
+const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6];
 
 type Lang = 'id' | 'en';
 
@@ -115,6 +116,15 @@ export default function App() {
   const { canInstall, install } = usePwaInstall();
   const projectFileRef = useRef<HTMLInputElement>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AiStatus>({ state: 'unknown' });
+  const [concurrency, setConcurrency] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem('iconcraft.concurrency'));
+      return CONCURRENCY_OPTIONS.includes(n) ? n : 3;
+    } catch {
+      return 3;
+    }
+  });
   const notify = useCallback((kind: ToastMessage['kind'], text: string) => setToast({ id: Date.now(), kind, text }), []);
 
   // Single source of truth for the mask shape: the Style DNA.
@@ -264,7 +274,7 @@ export default function App() {
   const patchIcon = (appName: string, patch: Partial<GeneratedIconItem>) =>
     setIcons((prev) => prev.map((i) => (i.appName === appName ? { ...i, ...patch } : i)));
 
-  const handleStartBatchGenerate = async () => {
+  const handleStartBatchGenerate = async (fromScratch = false) => {
     if (selectedApps.length === 0) {
       notify('error', t('Daftar aplikasi kosong. Tambahkan aplikasi di langkah 2.', 'App list is empty. Add apps in step 2.'));
       return;
@@ -273,7 +283,15 @@ export default function App() {
     const controller = new AbortController();
     abortRef.current = controller;
     const dna = styleDNA;
-    const queue = [...selectedApps];
+    const sig = renderSignature(dna);
+    // Resume: icons already made by AI with this exact DNA are kept (they survive a reload via autosave).
+    const isDone = (i?: GeneratedIconItem) => Boolean(i && i.source === 'ai' && i.status === 'ready' && i.svg && i.dnaSnap && renderSignature(i.dnaSnap) === sig);
+    const queue = selectedApps.filter((name) => fromScratch || !isDone(icons.find((i) => i.appName === name)));
+    if (queue.length === 0) {
+      notify('success', t('Semua ikon sudah dibuat dengan DNA ini. Pakai "Ulang dari awal" untuk membuat ulang.', 'All icons already exist for this DNA. Use "Start over" to regenerate them.'));
+      return;
+    }
+    let aiCount = 0;
     let next = 0;
     let completed = 0;
     let offlineCount = 0;
@@ -281,7 +299,7 @@ export default function App() {
 
     setIsBatchGenerating(true);
     setBatchProgress({ current: 0, total: queue.length, currentApp: '' });
-    setIcons((prev) => queue.map((name) => ({ ...(prev.find((i) => i.appName === name) ?? makeOfflineIcon(name, dna)), status: 'pending' as const })));
+    setIcons((prev) => prev.map((i) => (queue.includes(i.appName) ? { ...i, status: 'pending' as const } : i)));
 
     const worker = async () => {
       while (next < queue.length && !controller.signal.aborted) {
@@ -293,8 +311,10 @@ export default function App() {
           if (result.source === 'offline') {
             offlineCount++;
             firstReason ??= result.reason;
+          } else {
+            aiCount++;
           }
-          patchIcon(appName, { status: 'ready', svg: result.svg, source: result.source, dnaSnap: dna, updatedAt: Date.now() });
+          patchIcon(appName, { status: 'ready', svg: result.svg, source: result.source, dnaSnap: dna, note: result.source === 'offline' ? result.reason : undefined, updatedAt: Date.now() });
         } catch {
           patchIcon(appName, { status: 'ready' }); // aborted: keep previous artwork
         } finally {
@@ -304,12 +324,16 @@ export default function App() {
       }
     };
 
-    await Promise.all(Array.from({ length: BATCH_CONCURRENCY }, worker));
+    await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
 
     // Anything never reached (cancelled) goes back to its previous state.
     setIcons((prev) => prev.map((i) => (i.status === 'pending' ? { ...i, status: 'ready' } : i)));
     setIsBatchGenerating(false);
     abortRef.current = null;
+    if (creds && !controller.signal.aborted) {
+      if (aiCount > 0) setAiStatus({ state: 'ok' });
+      else if (offlineCount > 0 && firstReason !== 'NO_API_KEY') setAiStatus({ state: 'error', message: firstReason });
+    }
 
     if (controller.signal.aborted) {
       notify('info', t('Pembuatan dibatalkan.', 'Generation cancelled.'));
@@ -330,7 +354,8 @@ export default function App() {
     patchIcon(appName, { status: 'generating' });
     try {
       const result = await requestIcon(appName, styleDNA, customPrompt, undefined, creds);
-      patchIcon(appName, { status: 'ready', svg: result.svg, source: result.source, dnaSnap: styleDNA, updatedAt: Date.now() });
+      patchIcon(appName, { status: 'ready', svg: result.svg, source: result.source, dnaSnap: styleDNA, note: result.source === 'offline' ? result.reason : undefined, updatedAt: Date.now() });
+      if (creds) setAiStatus(result.source === 'ai' ? { state: 'ok' } : { state: 'error', message: result.reason });
       if (result.source === 'offline') {
         notify('info', t(`"${appName}" memakai generator offline (AI tidak tersedia).`, `"${appName}" used the offline generator (AI unavailable).`));
       }
@@ -377,6 +402,20 @@ export default function App() {
     notify('info', t('Preset dimuat. Klik "Terapkan ke ikon" untuk memakainya pada ikon yang ada.', 'Preset loaded. Click "Apply to icons" to use it on the existing icons.'));
   };
 
+  // Resume bookkeeping for the batch button.
+  const doneAiCount = useMemo(
+    () => icons.filter((i) => i.source === 'ai' && i.status === 'ready' && i.svg && i.dnaSnap && renderSignature(i.dnaSnap) === currentSig).length,
+    [icons, currentSig],
+  );
+  const remainingCount = Math.max(0, selectedApps.length - doneAiCount);
+  useWakeLock(isBatchGenerating);
+  useEffect(() => {
+    if (!isBatchGenerating) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [isBatchGenerating]);
+
   const readyIconCount = icons.filter((i) => i.status === 'ready' && (i.svg || i.imageUrl)).length;
   const progressPct = Math.round((batchProgress.current / (batchProgress.total || 1)) * 100);
 
@@ -390,6 +429,7 @@ export default function App() {
         readyIconCount={readyIconCount}
         onOpenApiKey={() => setShowKeyModal(true)}
         hasApiKey={Boolean(apiKey)}
+        aiState={!apiKey ? 'none' : aiStatus.state}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -434,7 +474,7 @@ export default function App() {
               outdatedCount={outdatedCount}
               isBusy={isBatchGenerating}
               onApplyToIcons={handleApplyToIcons}
-              onRegenerateAll={handleStartBatchGenerate}
+              onRegenerateAll={() => handleStartBatchGenerate(true)}
               onLoadDna={handleLoadSavedDna}
               notify={notify}
             />
@@ -449,7 +489,9 @@ export default function App() {
                     <span>{t('3. Mulai Pembuatan Massal', '3. Start Batch Generation')}</span>
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {t(`Siap membuat ${selectedApps.length} ikon tema seragam sekaligus`, `Ready to batch craft ${selectedApps.length} themed icons`)}
+                    {doneAiCount > 0
+                      ? t(`${doneAiCount} ikon AI sudah jadi, ${remainingCount} tersisa`, `${doneAiCount} AI icons done, ${remainingCount} left`)
+                      : t(`Siap membuat ${selectedApps.length} ikon tema seragam sekaligus`, `Ready to batch craft ${selectedApps.length} themed icons`)}
                   </p>
                 </div>
 
@@ -463,8 +505,16 @@ export default function App() {
                       <span>{t('Batal', 'Cancel')}</span>
                     </button>
                   )}
+                  {!isBatchGenerating && doneAiCount > 0 && remainingCount > 0 && (
+                    <button
+                      onClick={() => handleStartBatchGenerate(true)}
+                      className="px-3 py-3 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800/70 hover:bg-slate-800 border border-slate-700 rounded-xl cursor-pointer"
+                    >
+                      {t('Ulang dari awal', 'Start over')}
+                    </button>
+                  )}
                   <button
-                    onClick={handleStartBatchGenerate}
+                    onClick={() => handleStartBatchGenerate(remainingCount === 0 && doneAiCount > 0)}
                     disabled={isBatchGenerating || selectedApps.length === 0}
                     className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 text-sm font-extrabold text-white bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 rounded-xl shadow-lg shadow-indigo-600/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -476,11 +526,41 @@ export default function App() {
                     ) : (
                       <>
                         <Play className="w-4 h-4 fill-white" />
-                        <span>{t(`Mulai Generate Massal (${selectedApps.length} Ikon)`, `Batch Generate All (${selectedApps.length} Icons)`)}</span>
+                        <span>
+                          {doneAiCount > 0 && remainingCount > 0
+                            ? t(`Lanjutkan (${remainingCount} tersisa)`, `Resume (${remainingCount} left)`)
+                            : doneAiCount > 0
+                              ? t('Buat ulang semua', 'Regenerate all')
+                              : t(`Mulai Generate Massal (${selectedApps.length} Ikon)`, `Batch Generate All (${selectedApps.length} Icons)`)}
+                        </span>
                       </>
                     )}
                   </button>
                 </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-400">
+                <label htmlFor="conc">{t('Dibuat bersamaan:', 'In parallel:')}</label>
+                <select
+                  id="conc"
+                  value={concurrency}
+                  disabled={isBatchGenerating}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    setConcurrency(n);
+                    try {
+                      localStorage.setItem('iconcraft.concurrency', String(n));
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className="px-2 py-1 bg-slate-950 border border-slate-800 rounded-md text-slate-200 cursor-pointer"
+                >
+                  {CONCURRENCY_OPTIONS.map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <span className="text-slate-500">{t('Lebih besar = lebih cepat, tapi lebih mudah kena batas kuota Gemini.', 'Higher = faster, but hits Gemini rate limits sooner.')}</span>
               </div>
 
               {isBatchGenerating && (
@@ -613,10 +693,12 @@ export default function App() {
           onSave={(key, model) => {
             setApiKey(key);
             setAiModel(model || DEFAULT_TEXT_MODEL);
+            setAiStatus((s) => (key === apiKey && (model || DEFAULT_TEXT_MODEL) === aiModel ? s : { state: 'unknown' }));
             setShowKeyModal(false);
             notify('success', key ? t('API key tersimpan. Fitur AI aktif.', 'API key saved. AI features are on.') : t('API key dihapus.', 'API key removed.'));
           }}
           onClose={() => setShowKeyModal(false)}
+          onTested={setAiStatus}
         />
       )}
 

@@ -113,7 +113,7 @@ export const IconGallery: React.FC<IconGalleryProps> = ({
                   >
                     <IconTile icon={item} shape={activeShape} className="w-20 h-20" />
                     {item.source === 'offline' && (
-                      <span className="absolute bottom-0 inset-x-0 text-[8px] leading-4 font-bold uppercase bg-black/60 text-amber-300 text-center">
+                      <span title={item.note} className="absolute bottom-0 inset-x-0 text-[8px] leading-4 font-bold uppercase bg-black/60 text-amber-300 text-center">
                         offline
                       </span>
                     )}

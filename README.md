@@ -17,6 +17,7 @@ Generate a consistent Android icon pack from a single reference icon: Gemini Vis
 - Ekspor: paket resource Android (PNG mdpi–xxxhdpi + 512px, `appfilter.xml`, `drawable.xml`), PNG 1024px, SVG
 - **Simpan otomatis**: ikon, DNA, daftar aplikasi, dan gambar acuan tersimpan di perangkat (IndexedDB) dan dipulihkan saat halaman dimuat ulang; ekspor/impor proyek `.json`
 - **PWA**: bisa dipasang sebagai aplikasi (tombol "Pasang sebagai aplikasi" atau menu Chrome → Instal aplikasi) dan terbuka offline setelah kunjungan pertama
+- **Lanjutkan pembuatan massal**: ikon AI yang sudah jadi tidak dibuat ulang setelah reload; jumlah paralel bisa diatur; tombol **Tes koneksi** di jendela Kunci AI dan indikator status
 - UI dwibahasa (ID/EN)
 
 ## Menjalankan / Run

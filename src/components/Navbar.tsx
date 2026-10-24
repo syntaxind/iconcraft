@@ -9,6 +9,8 @@ interface NavbarProps {
   readyIconCount: number;
   onOpenApiKey: () => void;
   hasApiKey: boolean;
+  /** none = no key, unknown = key saved but never tested, ok = last call worked, error = last call failed. */
+  aiState: 'none' | 'unknown' | 'ok' | 'error';
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -19,7 +21,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   readyIconCount,
   onOpenApiKey,
   hasApiKey,
+  aiState,
 }) => {
+  const dot = { none: 'bg-amber-400', unknown: 'bg-sky-400', ok: 'bg-emerald-400', error: 'bg-rose-500' }[aiState];
+  const text = { none: 'text-amber-400', unknown: 'text-sky-400', ok: 'text-emerald-400', error: 'text-rose-400' }[aiState];
+  const tip = {
+    none: lang === 'id' ? 'Belum ada API key' : 'No API key yet',
+    unknown: lang === 'id' ? 'Key tersimpan, belum diuji. Buka untuk Tes koneksi' : 'Key saved, not tested yet. Open to test the connection',
+    ok: lang === 'id' ? 'Terhubung ke Gemini' : 'Connected to Gemini',
+    error: lang === 'id' ? 'Panggilan AI terakhir gagal. Buka untuk Tes koneksi' : 'Last AI call failed. Open to test the connection',
+  }[aiState];
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
@@ -48,12 +59,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={onOpenApiKey}
             className="relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition-all cursor-pointer"
-            title={lang === 'id' ? 'Kunci API Gemini' : 'Gemini API key'}
+            title={tip}
             aria-label={lang === 'id' ? 'Kunci API Gemini' : 'Gemini API key'}
           >
-            <KeyRound className={`w-4 h-4 ${hasApiKey ? 'text-emerald-400' : 'text-amber-400'}`} />
+            <KeyRound className={`w-4 h-4 ${text}`} />
             <span className="hidden sm:inline">{lang === 'id' ? 'Kunci AI' : 'AI key'}</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${hasApiKey ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
           </button>
 
           {/* Help button */}

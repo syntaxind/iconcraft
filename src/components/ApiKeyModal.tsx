@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { X, KeyRound, ShieldAlert, ExternalLink, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, KeyRound, ShieldAlert, ExternalLink, Trash2, Zap, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { clearApiKey, saveApiKey, saveModel } from '../utils/apiKeyStore';
-import { DEFAULT_TEXT_MODEL } from '../utils/geminiClient';
+import { DEFAULT_TEXT_MODEL, testConnection, type AiStatus } from '../utils/geminiClient';
 
 interface ApiKeyModalProps {
   lang: 'id' | 'en';
@@ -9,13 +9,17 @@ interface ApiKeyModalProps {
   model: string;
   onSave: (key: string, model: string) => void;
   onClose: () => void;
+  onTested: (status: AiStatus) => void;
 }
 
-export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ lang, apiKey, model, onSave, onClose }) => {
+export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ lang, apiKey, model, onSave, onClose, onTested }) => {
   const [key, setKey] = useState(apiKey);
   const [modelName, setModelName] = useState(model);
   const [remember, setRemember] = useState(true);
   const [show, setShow] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const testedOk = useRef('');
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const t = (id: string, en: string) => (lang === 'id' ? id : en);
 
   useEffect(() => {
@@ -34,6 +38,31 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ lang, apiKey, model, o
       clearApiKey(); // not remembered: keep it in memory for this tab only
     }
     onSave(trimmed, m);
+    // A key that was just tested successfully stays marked as working after saving.
+    if (trimmed && testedOk.current === `${trimmed}|${m}`) onTested({ state: 'ok' });
+  };
+
+  const handleTest = async () => {
+    const k = key.trim();
+    const m = modelName.trim() || DEFAULT_TEXT_MODEL;
+    if (!k) {
+      setResult({ ok: false, text: t('Isi API key dulu.', 'Enter an API key first.') });
+      return;
+    }
+    setTesting(true);
+    setResult(null);
+    try {
+      const { ms } = await testConnection(k, m);
+      setResult({ ok: true, text: t(`Terhubung ke Gemini (${m}) dalam ${ms} ms. Key dan model valid.`, `Connected to Gemini (${m}) in ${ms} ms. Key and model are valid.`) });
+      testedOk.current = `${k}|${m}`;
+      onTested({ state: 'ok' });
+    } catch (err) {
+      const message = (err as Error).message;
+      setResult({ ok: false, text: message });
+      onTested({ state: 'error', message });
+    } finally {
+      setTesting(false);
+    }
   };
 
   const handleRemove = () => {
@@ -120,6 +149,23 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ lang, apiKey, model, o
               'The key goes straight from your browser to Google and never through any server. Use a personal key, set a quota limit in AI Studio, and do not enter it on a shared computer. Remove it with the button below at any time.',
             )}
           </div>
+        </div>
+
+        <div className="mb-4">
+          <button
+            onClick={handleTest}
+            disabled={testing || !key.trim()}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-emerald-200 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl cursor-pointer disabled:opacity-50"
+          >
+            {testing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+            {testing ? t('Menguji koneksi...', 'Testing connection...') : t('Tes koneksi', 'Test connection')}
+          </button>
+          {result && (
+            <div role="status" className={`mt-2 p-3 rounded-xl border text-[11px] leading-relaxed flex gap-2 ${result.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-100' : 'bg-rose-500/10 border-rose-500/30 text-rose-100'}`}>
+              {result.ok ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" /> : <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />}
+              <span>{result.text}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-2">

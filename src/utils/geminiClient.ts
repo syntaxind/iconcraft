@@ -103,3 +103,15 @@ export async function generateSvgDirect(
   const text = await generate(apiKey, model, { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }, signal);
   return sanitizeSvg(text);
 }
+
+export interface AiStatus {
+  state: 'unknown' | 'ok' | 'error';
+  message?: string;
+}
+
+/** Sends one tiny request to prove the key + model work. Throws GeminiError with a readable message. */
+export async function testConnection(apiKey: string, model: string): Promise<{ ms: number }> {
+  const started = performance.now();
+  await generate(apiKey, model, { contents: [{ parts: [{ text: 'Reply with the single word OK.' }] }] }, undefined, [1500]);
+  return { ms: Math.round(performance.now() - started) };
+}

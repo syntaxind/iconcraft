@@ -56,6 +56,8 @@ export interface GeneratedIconItem {
   /** 'ai' = produced by Gemini, 'offline' = built-in generator (API unavailable or failed). */
   source?: 'ai' | 'offline';
   error?: string;
+  /** Why this icon fell back to the offline generator (shown as a tooltip). */
+  note?: string;
   /** The Style DNA this artwork was made with; used to detect icons that are out of date. */
   dnaSnap?: StyleDNA;
   updatedAt: number;
